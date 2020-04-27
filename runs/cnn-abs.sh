@@ -1,3 +1,9 @@
+# STEP 1
+# wget http://nlp.stanford.edu/software/stanford-corenlp-full-2018-10-05.zip
+# unzip stanford-corenlp-full-2018-10-05.zip
+# chmod 777 ./stanford-corenlp-full-2018-10-05/stanford-corenlp-3.9.2.jar
+export CLASSPATH=./stanford-corenlp-full-2018-10-05/stanford-corenlp-3.9.2.jar
+
 # STEP 2
 # There's a bug in the databuilder where the file referenced is not created and populated.
 # Here's the workaround:

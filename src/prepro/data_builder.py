@@ -16,6 +16,7 @@ from multiprocess import Pool
 from others.logging import logger
 from others.tokenization import BertTokenizer
 from pytorch_transformers import XLNetTokenizer
+from transformers import AutoTokenizer
 
 from others.utils import clean
 from prepro.utils import _get_word_ngrams
@@ -52,6 +53,16 @@ def load_json(p, lower):
     tgt = [clean(' '.join(sent)).split() for sent in tgt]
     return source, tgt
 
+def load_stanford_json(stanford_json, lower):
+    output = []
+    for sent in json.load(open(stanford_json))['sentences']:
+        tokens = [t['word'] for t in sent['tokens']]
+        if (lower):
+            tokens = [t.lower() for t in tokens]
+        output.append(tokens)
+
+    output = [clean(' '.join(sent)).split() for sent in output]
+    return output
 
 
 def load_xml(p):
@@ -207,7 +218,9 @@ def hashhex(s):
 class BertData():
     def __init__(self, args):
         self.args = args
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        # self.tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True)
+        cache_dir = args.temp_dir if 'temp_dir' in vars(args).keys() else './temp'
+        self.tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=cache_dir)
 
         self.sep_token = '[SEP]'
         self.cls_token = '[CLS]'
@@ -328,6 +341,127 @@ def _format_to_bert(params):
     gc.collect()
 
 
+def custom_format_to_lines(args):
+    # only including corpus_type and p_ct to maintain continuity
+    corpus_type = 'train'
+    p_ct = 0
+
+    train_filename = ''
+    target_filename = ''
+    for f in glob.glob(pjoin(args.raw_path, '*.json')):
+        if 'src' in f:
+            train_filename = f
+        elif 'tgt' in f:
+            target_filename = f
+
+    source_sents = load_stanford_json(train_filename, args.lower)
+    target_sents = load_stanford_json(target_filename, args.lower)
+    dataset = {'src': source_sents, 'tgt': target_sents}
+    pt_file = "{:s}/{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+    with open(pt_file, 'w') as save:
+        # save.write('\n'.join(dataset))
+        save.write(json.dumps(dataset))
+
+
+# FROM: https://github.com/nlpyang/PreSumm/issues/98
+def custom_format_to_lines_2(args):
+    corpus_mapping = {}
+    train_files = []
+    target_files = []
+    for f in glob.glob(pjoin(args.raw_path, '*.json')):
+        if 'src' in f:
+            train_files.append(f)
+        elif 'tgt' in f:
+            target_files.append(f)
+    
+    corpora = {'train': train_files, 'target': target_files}
+    for corpus_type in ['train', 'target']:
+        a_lst = [(f, args) for f in corpora[corpus_type]]
+        pool = Pool(args.n_cpus)
+        dataset = []
+        p_ct = 0
+        for d in pool.imap_unordered(_format_to_lines, a_lst):
+            dataset.append(d)
+            if (len(dataset) > args.shard_size):
+                pt_file = "{:s}/{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+                with open(pt_file, 'w') as save:
+                    # save.write('\n'.join(dataset))
+                    save.write(json.dumps(dataset))
+                    p_ct += 1
+                    dataset = []
+
+        pool.close()
+        pool.join()
+        if (len(dataset) > 0):
+            pt_file = "{:s}/{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+            with open(pt_file, 'w') as save:
+                # save.write('\n'.join(dataset))
+                save.write(json.dumps(dataset))
+                p_ct += 1
+                dataset = []
+
+
+def custom_format_to_bert(args):
+        if (args.dataset != ''):
+            datasets = [args.dataset]
+            print('dataset')
+        else:
+            datasets = ['train']
+        for corpus_type in datasets:
+            a_lst = []
+            print('.' + corpus_type + '.0.json')
+            for json_f in glob.glob(pjoin(args.raw_path, corpus_type + '.0.json')):
+                print(json_f)
+                real_name = json_f.split('/')[-1]
+                print(real_name)
+                a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
+            print(a_lst)
+            pool = Pool(args.n_cpus)
+            # for d in pool.imap(_custom_format_to_bert, a_lst):
+                # pass
+            # Linearize when debugging
+            _custom_format_to_bert(a_lst)
+
+            pool.close()
+            pool.join()
+
+
+def _custom_format_to_bert(params):
+    corpus_type, json_file, args, save_file = params[0]
+    is_test = corpus_type == 'test'
+    if (os.path.exists(save_file)):
+        logger.info('Ignore %s' % save_file)
+        return
+
+    bert = BertData(args)
+
+    logger.info('Processing %s' % json_file)
+    datasets = []
+    dataset = json.load(open(json_file))
+    source, tgt = dataset['src'], dataset['tgt']
+
+    # TODO parameterize summary_size (3)
+    sent_labels = greedy_selection(source[:args.max_src_nsents], tgt, 10)
+    if (args.lower):
+        source = [' '.join(s).lower().split() for s in source]
+        tgt = [' '.join(s).lower().split() for s in tgt]
+    b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer, is_test=is_test)
+    # b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer)
+
+    if (b_data is None):
+        return
+    src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt = b_data
+    b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
+                   "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
+                   'src_txt': src_txt, "tgt_txt": tgt_txt}
+    datasets.append(b_data_dict)
+    logger.info('Processed instances %d' % len(datasets))
+    logger.info('Saving to %s' % save_file)
+    torch.save(datasets, save_file)
+    datasets = []
+    gc.collect()
+
+
 def format_to_lines(args):
     corpus_mapping = {}
     for corpus_type in ['valid', 'test', 'train']:
@@ -377,8 +511,6 @@ def _format_to_lines(params):
     print(f)
     source, tgt = load_json(f, args.lower)
     return {'src': source, 'tgt': tgt}
-
-
 
 
 def format_xsum_to_lines(args):

@@ -5,6 +5,7 @@ import random
 
 import torch
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 from others.logging import logger
 
@@ -91,7 +92,7 @@ def load_dataset(args, corpus_type, shuffle):
             yield _lazy_dataset_loader(pt, corpus_type)
     else:
         # Only one inputters.*Dataset, simple!
-        pt = args.bert_data_path + '.' + corpus_type + '.pt'
+        pt = args.bert_data_path # + '.' + corpus_type + '.pt'
         yield _lazy_dataset_loader(pt, corpus_type)
 
 
@@ -285,7 +286,8 @@ class DataIterator(object):
 
 def load_text(args, source_fp, target_fp, device):
     from others.tokenization import BertTokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+    # tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True)
+    tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=args.temp_dir)
     sep_vid = tokenizer.vocab['[SEP]']
     cls_vid = tokenizer.vocab['[CLS]']
     n_lines = len(open(source_fp).read().split('\n'))

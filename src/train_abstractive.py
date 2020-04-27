@@ -13,6 +13,7 @@ import time
 
 import torch
 from pytorch_transformers import BertTokenizer
+from transformers import AutoTokenizer
 
 import distributed
 from models import data_loader, model_builder
@@ -186,7 +187,8 @@ def validate(args, device_id, pt, step):
                                         args.batch_size, device,
                                         shuffle=False, is_test=False)
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, cache_dir=args.temp_dir)
+    # tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True, cache_dir=args.temp_dir)
+    tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=args.temp_dir)
     symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
                'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
 
@@ -218,7 +220,8 @@ def test_abs(args, device_id, pt, step):
     test_iter = data_loader.Dataloader(args, load_dataset(args, 'test', shuffle=False),
                                        args.test_batch_size, device,
                                        shuffle=False, is_test=True)
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, cache_dir=args.temp_dir)
+    # tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True, cache_dir=args.temp_dir)
+    tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=args.temp_dir)
     symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
                'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
     predictor = build_predictor(args, tokenizer, symbols, model, logger)
@@ -295,7 +298,8 @@ def train_abs_single(args, device_id):
 
     logger.info(model)
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, cache_dir=args.temp_dir)
+    # tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True, cache_dir=args.temp_dir)
+    tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=args.temp_dir)
     symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
                'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
 
@@ -326,7 +330,8 @@ def test_text_abs(args):
 
     test_iter = data_loader.load_text(args, args.text_src, args.text_tgt, device)
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, cache_dir=args.temp_dir)
+    # tokenizer = BertTokenizer.from_pretrained('covid_bert_base', do_lower_case=True, cache_dir=args.temp_dir)
+    tokenizer = AutoTokenizer.from_pretrained('deepset/covid_bert_base', cache_dir=args.temp_dir)
     symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
                'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
     predictor = build_predictor(args, tokenizer, symbols, model, logger)

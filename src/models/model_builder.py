@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from pytorch_transformers import BertModel, BertConfig
 from torch.nn.init import xavier_uniform_
+from transformers import AutoModelWithLMHead
 
 from models.decoder import TransformerDecoder
 from models.encoder import Classifier, ExtTransformerEncoder
@@ -118,13 +119,16 @@ class Bert(nn.Module):
         if(large):
             self.model = BertModel.from_pretrained('bert-large-uncased', cache_dir=temp_dir)
         else:
-            self.model = BertModel.from_pretrained('bert-base-uncased', cache_dir=temp_dir)
+            self.model = AutoModelWithLMHead.from_pretrained("deepset/covid_bert_base").bert
+            # self.model = BertModel.from_pretrained('deepset/covid-bert-base', cache_dir=temp_dir)
+            # self.model = BertModel.from_pretrained('bert-base-uncased', cache_dir=temp_dir)
 
         self.finetune = finetune
 
     def forward(self, x, segs, mask):
         if(self.finetune):
-            top_vec, _ = self.model(x, segs, attention_mask=mask)
+            top_vec, _ = self.model(input_ids=x, token_type_ids=segs, attention_mask=mask)
+            # top_vec, _ = self.model(x, segs, attention_mask=mask)
         else:
             self.eval()
             with torch.no_grad():
@@ -170,7 +174,7 @@ class ExtSummarizer(nn.Module):
         self.to(device)
 
     def forward(self, src, segs, clss, mask_src, mask_cls):
-        top_vec = self.bert(src, segs, mask_src)
+        top_vec = self.bert(src, segs, mask_src)  # calls Bert's forward method
         sents_vec = top_vec[torch.arange(top_vec.size(0)).unsqueeze(1), clss]
         sents_vec = sents_vec * mask_cls[:, :, None].float()
         sent_scores = self.ext_layer(sents_vec, mask_cls).squeeze(-1)
